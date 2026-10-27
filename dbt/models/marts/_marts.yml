@@ -1,0 +1,409 @@
+version: 2
+
+# The agent can only query this schema. Every column needs a clear description:
+# the agent reads these to choose tables and write SQL.
+# Money is in Brazilian reais (BRL). `region` is the buyer's macro-region and
+# drives row-level security. Data is complete only from 2017-01 to 2018-08.
+
+models:
+  - name: dim_geography
+    description: One row per Brazilian state, with its macro-region and capital.
+    columns:
+      - name: state
+        description: Two-letter state code (UF), e.g. SP.
+        data_tests: [unique, not_null]
+      - name: state_name
+        description: Full state name, e.g. São Paulo.
+      - name: region
+        description: Macro-region (Norte, Nordeste, Centro-Oeste, Sudeste, Sul).
+        data_tests: &region_tests
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Norte, Nordeste, Centro-Oeste, Sudeste, Sul]
+      - name: capital
+        description: State capital, where the state's weather is measured.
+      - name: capital_latitude
+        description: Latitude of the capital.
+      - name: capital_longitude
+        description: Longitude of the capital.
+
+  - name: dim_date
+    description: >
+      One row per calendar day from 2016-09-01 to 2018-10-31. Orders are complete only from
+      2017-01 to 2018-08; the months before and after have almost no orders.
+    columns:
+      - name: date_day
+        description: The calendar day. Join to purchase_date or weather_date.
+        data_tests: [unique, not_null]
+      - name: year
+        description: Calendar year.
+      - name: quarter
+        description: Calendar quarter, 1-4.
+      - name: month
+        description: Month number, 1-12.
+      - name: month_name
+        description: Month name in English, e.g. November.
+      - name: year_month
+        description: Year and month as text, e.g. 2017-11. Good for monthly grouping.
+      - name: week_start
+        description: Monday of the ISO week containing the day.
+      - name: day_of_week
+        description: ISO day of week, 1 = Monday ... 7 = Sunday.
+      - name: day_name
+        description: Day name in English, e.g. Friday.
+      - name: is_weekend
+        description: True on Saturday and Sunday.
+      - name: is_holiday
+        description: True on Brazilian national holidays and widely observed optional days (Carnival, Corpus Christi).
+      - name: holiday_name
+        description: Holiday name in English, null on normal days.
+      - name: holiday_type
+        description: national (legal holiday) or optional (Carnival, Corpus Christi); null on normal days.
+      - name: is_black_friday
+        description: True on Black Friday (fourth Friday of November), the biggest sales day.
+
+  - name: dim_products
+    description: One row per product.
+    columns:
+      - name: product_id
+        description: Unique product identifier.
+        data_tests: [unique, not_null]
+      - name: category
+        description: Product category in English; Portuguese name when no translation exists; 'unknown' when missing.
+        data_tests: [not_null]
+      - name: category_portuguese
+        description: Original Portuguese category name, or 'unknown'.
+      - name: photos_count
+        description: Number of product photos.
+      - name: weight_g
+        description: Product weight in grams.
+      - name: length_cm
+        description: Package length in centimetres.
+      - name: height_cm
+        description: Package height in centimetres.
+      - name: width_cm
+        description: Package width in centimetres.
+      - name: volume_cm3
+        description: Package volume in cubic centimetres.
+
+  - name: dim_customers
+    description: >
+      One row per person (customer_unique_id). Use this to count customers. Location is the
+      person's state at their latest order. order_count includes canceled orders; for active or
+      paying customers, count distinct customer_unique_id in fct_orders where not is_canceled.
+    columns:
+      - name: customer_unique_id
+        description: Identifies a person across orders.
+        data_tests: [unique, not_null]
+      - name: city
+        description: City of the latest order, lower case, no accents.
+      - name: state
+        description: State code of the latest order.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_geography')
+                field: state
+      - name: region
+        description: Macro-region of the latest order's state.
+        data_tests: *region_tests
+      - name: zip_code_prefix
+        description: First five zip code digits of the latest order.
+      - name: latitude
+        description: Approximate latitude of the zip prefix. Null when unknown.
+      - name: longitude
+        description: Approximate longitude of the zip prefix. Null when unknown.
+      - name: first_order_at
+        description: When the person placed their first order.
+      - name: last_order_at
+        description: When the person placed their latest order.
+      - name: order_count
+        description: Number of orders placed by the person, any status (canceled included).
+      - name: is_repeat_customer
+        description: True when the person placed more than one order.
+
+  - name: dim_sellers
+    description: One row per seller.
+    columns:
+      - name: seller_id
+        description: Unique seller identifier.
+        data_tests: [unique, not_null]
+      - name: city
+        description: Seller city, lower case, no accents.
+      - name: state
+        description: Seller state code.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_geography')
+                field: state
+      - name: region
+        description: Macro-region of the seller's state.
+        data_tests: *region_tests
+      - name: zip_code_prefix
+        description: First five digits of the seller's zip code.
+      - name: latitude
+        description: Approximate latitude of the zip prefix. Null when unknown.
+      - name: longitude
+        description: Approximate longitude of the zip prefix. Null when unknown.
+      - name: first_sale_at
+        description: Purchase time of the seller's first order.
+      - name: last_sale_at
+        description: Purchase time of the seller's latest order.
+      - name: items_sold
+        description: Number of order items the seller fulfilled (any order status).
+
+  - name: fct_orders
+    description: >
+      One row per order. Revenue = sum(order_value) where not is_canceled (gross merchandise value
+      including freight). Do not use payment_value for revenue: it includes card interest and
+      differs on about 1% of orders. Data is complete only from 2017-01 to 2018-08; exclude other
+      months from trend and growth questions.
+    data_tests:
+      - expression_is_true:
+          arguments:
+            expression: "order_value >= 0"
+      - expression_is_true:
+          arguments:
+            expression: "delivery_days is null or delivery_days >= 0"
+      - expression_is_true:
+          arguments:
+            expression: "payment_value is null or payment_value >= 0"
+    columns:
+      - name: order_id
+        description: Unique order identifier.
+        data_tests: [unique, not_null]
+      - name: customer_unique_id
+        description: The person who placed the order.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_unique_id
+      - name: customer_state
+        description: Buyer's state code at order time.
+        data_tests: [not_null]
+      - name: region
+        description: Buyer's macro-region at order time.
+        data_tests: *region_tests
+      - name: order_status
+        description: delivered, shipped, canceled, unavailable, invoiced, processing, created or approved.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [delivered, shipped, canceled, unavailable, invoiced, processing, created, approved]
+      - name: is_canceled
+        description: True when the status is canceled or unavailable. Exclude these from revenue.
+      - name: is_delivered
+        description: True when the order reached the customer.
+      - name: purchased_at
+        description: When the order was placed.
+      - name: purchase_date
+        description: Day the order was placed. Join to dim_date.date_day.
+        data_tests: [not_null]
+      - name: approved_at
+        description: When the payment was approved.
+      - name: delivered_to_carrier_at
+        description: When the order was handed to the carrier.
+      - name: delivered_to_customer_at
+        description: When the customer received the order.
+      - name: estimated_delivery_date
+        description: Delivery date promised at purchase.
+      - name: item_count
+        description: Number of items; 0 for orders with no items.
+      - name: seller_count
+        description: Number of different sellers in the order; 0 when the order has no items.
+      - name: items_value
+        description: Sum of item prices in BRL, excluding freight.
+      - name: freight_value
+        description: Sum of freight in BRL.
+      - name: order_value
+        description: Revenue of the order in BRL = items_value + freight_value. 0 when there are no items. Sum only orders where not is_canceled.
+      - name: payment_value
+        description: Total paid in BRL across all payments, including card interest. Null for the 1 order with no payment. Not the revenue measure.
+      - name: payment_count
+        description: Number of payments used for the order.
+      - name: max_installments
+        description: Largest number of credit card installments used.
+      - name: primary_payment_type
+        description: Payment type that paid the largest share, ties to the first payment (credit_card, boleto, voucher, debit_card, not_defined).
+      - name: delivery_days
+        description: Days from purchase to delivery, one decimal. Null unless the status is delivered with timestamps in order. Use avg(delivery_days) for average delivery time.
+      - name: is_late
+        description: True when delivered after the promised date. Null unless the status is delivered with a delivery timestamp.
+      - name: review_score
+        description: Score of the order's latest review, 1-5; null if not reviewed.
+
+  - name: fct_order_items
+    description: >
+      One row per item sold. Use for product, category and seller analysis. region is the buyer's
+      region; seller_region is where the item shipped from.
+    columns:
+      - name: order_item_key
+        description: Unique key, order id plus item number.
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: Order the item belongs to.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: order_item_number
+        description: Position of the item in the order, starting at 1.
+      - name: product_id
+        description: Product sold.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_id
+      - name: product_category
+        description: Product category in English (see dim_products.category).
+        data_tests: [not_null]
+      - name: seller_id
+        description: Seller who fulfilled the item.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_sellers')
+                field: seller_id
+      - name: seller_state
+        description: Seller's state code.
+      - name: seller_region
+        description: Seller's macro-region.
+      - name: customer_unique_id
+        description: The person who bought the item.
+      - name: customer_state
+        description: Buyer's state code at order time.
+      - name: region
+        description: Buyer's macro-region at order time.
+        data_tests: *region_tests
+      - name: order_status
+        description: Status of the parent order.
+      - name: is_canceled
+        description: True when the parent order was canceled or unavailable.
+      - name: purchased_at
+        description: When the parent order was placed.
+      - name: purchase_date
+        description: Day the parent order was placed. Join to dim_date.date_day.
+      - name: price
+        description: Item price in BRL, excluding freight.
+        data_tests: [not_null]
+      - name: freight_value
+        description: Freight charged for the item in BRL.
+      - name: item_value
+        description: price + freight_value in BRL.
+
+  - name: fct_payments
+    description: One row per payment. Use for payment method and installment analysis.
+    columns:
+      - name: payment_key
+        description: Unique key, order id plus payment sequence.
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: Order that was paid.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: payment_sequence
+        description: Position of the payment within the order.
+      - name: payment_type
+        description: credit_card, boleto, voucher, debit_card or not_defined.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [credit_card, boleto, voucher, debit_card, not_defined]
+      - name: installments
+        description: Number of installments; null when the source recorded 0.
+      - name: payment_value
+        description: Amount paid in BRL.
+      - name: customer_unique_id
+        description: The person who paid.
+      - name: customer_state
+        description: Buyer's state code at order time.
+      - name: region
+        description: Buyer's macro-region at order time.
+        data_tests: *region_tests
+      - name: order_status
+        description: Status of the paid order.
+      - name: purchase_date
+        description: Day the order was placed.
+
+  - name: fct_reviews
+    description: One row per reviewed order (its latest review). Use for satisfaction metrics.
+    columns:
+      - name: order_id
+        description: Reviewed order.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: review_id
+        description: Review identifier.
+      - name: review_score
+        description: Satisfaction score from 1 (worst) to 5 (best).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+      - name: has_comment
+        description: True when the customer wrote a comment (the text itself is not stored here).
+      - name: created_date
+        description: Day the review survey was sent.
+      - name: answered_at
+        description: When the customer answered.
+      - name: customer_unique_id
+        description: The person who reviewed.
+      - name: customer_state
+        description: Buyer's state code at order time.
+      - name: region
+        description: Buyer's macro-region at order time.
+        data_tests: *region_tests
+      - name: order_status
+        description: Status of the reviewed order.
+      - name: purchase_date
+        description: Day the reviewed order was placed.
+
+  - name: fct_daily_weather
+    description: >
+      One row per state and day, measured at the state capital. Join to orders on
+      customer_state = state and purchase_date = weather_date.
+    columns:
+      - name: weather_key
+        description: Unique key, state plus date.
+        data_tests: [unique, not_null]
+      - name: state
+        description: State code.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_geography')
+                field: state
+      - name: region
+        description: Macro-region of the state.
+        data_tests: *region_tests
+      - name: weather_date
+        description: Calendar day in the capital's local time.
+      - name: temp_max_c
+        description: Daily maximum temperature in °C.
+      - name: temp_min_c
+        description: Daily minimum temperature in °C.
+      - name: precipitation_mm
+        description: Total daily rain in millimetres.
+      - name: is_rainy_day
+        description: True when precipitation is at least 1 mm.

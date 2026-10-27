@@ -27,8 +27,9 @@ logs: ## Follow service logs
 model: ## Pull the default LLM into the ollama container
 	$(COMPOSE) exec ollama ollama pull $(LLM_MODEL)
 
-pipeline: ## Download data, load raw tables, run dbt build (idempotent)
+pipeline: ## Download data, load raw tables, run dbt build, write docs/data_quality.md
 	uv run python -m pipeline
+	uv run python -m pipeline.quality
 
 dagster: ## Open the Dagster UI at http://localhost:3002
 	DAGSTER_HOME=$(CURDIR)/data/dagster uv run dagster dev -m pipeline.definitions -p 3002

@@ -1,0 +1,65 @@
+version: 2
+
+models:
+  - name: int_order_items_by_order
+    description: One row per order that has at least one item, with item counts and values.
+    columns:
+      - name: order_id
+        description: Order identifier.
+        data_tests: [unique, not_null]
+      - name: item_count
+        description: Number of items in the order.
+      - name: distinct_products
+        description: Number of different products in the order.
+      - name: distinct_sellers
+        description: Number of different sellers in the order.
+      - name: items_value
+        description: Sum of item prices in BRL, excluding freight.
+      - name: freight_value
+        description: Sum of freight in BRL.
+
+  - name: int_payments_by_order
+    description: One row per order that has at least one payment.
+    columns:
+      - name: order_id
+        description: Order identifier.
+        data_tests: [unique, not_null]
+      - name: payment_count
+        description: Number of payments (an order can be split across methods).
+      - name: payment_value
+        description: Total amount paid in BRL.
+      - name: max_installments
+        description: Largest number of installments across the order's payments.
+      - name: primary_payment_type
+        description: Payment type that paid the largest amount (ties to the earliest payment).
+
+  - name: int_reviews_latest_per_order
+    description: One row per reviewed order, keeping its most recently answered review.
+    columns:
+      - name: review_id
+        description: Review identifier.
+        data_tests: [not_null]
+      - name: order_id
+        description: Order identifier.
+        data_tests: [unique, not_null]
+      - name: review_score
+        description: Score from 1 to 5.
+      - name: has_comment
+        description: True when the customer wrote a title or message.
+      - name: created_date
+        description: Day the survey was sent.
+      - name: answered_at
+        description: When the customer answered.
+
+  - name: int_orders_with_customer
+    description: One row per order with the buyer's person id, state and region at order time.
+    columns:
+      - name: order_id
+        description: Order identifier.
+        data_tests: [unique, not_null]
+      - name: customer_unique_id
+        description: The person who placed the order.
+        data_tests: [not_null]
+      - name: region
+        description: Brazilian macro-region of the buyer's state.
+        data_tests: [not_null]

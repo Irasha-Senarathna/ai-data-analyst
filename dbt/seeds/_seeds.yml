@@ -24,3 +24,21 @@ seeds:
         description: Capital latitude.
       - name: longitude
         description: Capital longitude.
+
+  - name: brazil_holidays
+    description: Brazilian national holidays and widely observed optional days, 2016-09 to 2018-10.
+    config:
+      column_types:
+        holiday_date: date
+    columns:
+      - name: holiday_date
+        description: The holiday.
+        data_tests: [unique, not_null]
+      - name: holiday_name
+        description: Holiday name in English.
+      - name: holiday_type
+        description: national (legal holiday) or optional (ponto facultativo, widely observed).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [national, optional]

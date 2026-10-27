@@ -92,16 +92,16 @@ flowchart LR
 
 | Table | Grain | Notes |
 |---|---|---|
-| `fct_orders` | one row per order | status, purchase/delivery timestamps, totals, `customer_state`, `region` |
-| `fct_order_items` | one row per order item | price, freight, product, seller, `region` |
-| `fct_payments` | one row per payment | type, installments, value |
-| `fct_reviews` | one row per review | score, has_comment |
-| `fct_daily_weather` | state × date | temp max/min, precipitation, `is_rainy_day` |
-| `dim_customers` | customer_unique_id | city, state, `region`, first order date |
-| `dim_sellers` | seller | city, state, `region` |
-| `dim_products` | product | category (Portuguese + English), dimensions |
-| `dim_date` | day | year, quarter, month, week, weekday, is_weekend, Brazilian holidays |
-| `dim_geography` | state | macro-region, capital, lat/lon |
+| `fct_orders` | one row per order | status, timestamps, `order_value` (items + freight, the revenue measure), `payment_value` (paid, kept separate), delivery days, latest review score, `customer_state`, `region` |
+| `fct_order_items` | one row per order item | price, freight, product category, seller and seller region, buyer `region` |
+| `fct_payments` | one row per payment | type, installments, value, `region` |
+| `fct_reviews` | one row per reviewed order | latest review's score, `has_comment` (no free text), `region` |
+| `fct_daily_weather` | state × day | temp max/min, precipitation, `is_rainy_day` (≥ 1 mm), `region` |
+| `dim_customers` | one row per person (`customer_unique_id`) | city/state/`region` of the latest order, first/last order, repeat flag |
+| `dim_sellers` | seller | city, state, `region`, items sold |
+| `dim_products` | product | English category (Portuguese or `unknown` as fallback), dimensions |
+| `dim_date` | day | year, quarter, month, week, weekday, weekend, Brazilian holidays, Black Friday |
+| `dim_geography` | state | macro-region, capital, capital coordinates |
 
 ---
 

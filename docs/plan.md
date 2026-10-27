@@ -65,7 +65,7 @@ For the design, see [architecture.md](architecture.md).
 ---
 
 ## M3 — Marts + data quality
-**Status:** TODO
+**Status:** DONE
 
 **Goal:** business-ready `fct_*`/`dim_*` tables with full docs and tests.
 
@@ -79,20 +79,21 @@ For the design, see [architecture.md](architecture.md).
 - No free-text review comments in marts (prompt-injection surface); only `has_comment`.
 
 **Files**
-- `dbt/models/intermediate/int_*.sql`
+- `dbt/models/intermediate/int_*.sql`: items, payments and latest review per order; orders with customer
 - `dbt/models/marts/`: `fct_orders`, `fct_order_items`, `fct_payments`, `fct_reviews`, `fct_daily_weather`, `dim_customers`, `dim_sellers`, `dim_products`, `dim_date`, `dim_geography`
 - `_marts.yml` with a description for every column
-- `dbt/reports/data_quality.py`, which writes `data_quality.md`
+- `dbt/seeds/brazil_holidays.csv`; `dbt/tests/generic/expression_is_true.sql` (no dbt packages needed); singular tests for item reconciliation and out-of-order delivery timestamps
+- `pipeline/quality.py`, which writes `docs/data_quality.md` (run by `make pipeline`)
 
 **Acceptance criteria**
-- [ ] `dbt build` is green.
-- [ ] dbt tests cover:
+- [x] `dbt build` is green (142 tests pass on real data; 3 known source-data warnings, see `docs/data_quality.md`).
+- [x] dbt tests cover:
   - relationships;
   - `accepted_values` for `region`;
   - expression tests such as revenue ≥ 0 and delivered date ≥ purchase date.
-- [ ] A pytest that parses `manifest.json` shows every mart column has a description.
-- [ ] Critical and Warning findings from the `sql-reviewer` are fixed.
-- [ ] `make test` passes.
+- [x] A pytest that parses `manifest.json` shows every mart column has a description.
+- [x] Critical and Warning findings from the `sql-reviewer` are fixed.
+- [x] `make test` passes.
 
 ---
 

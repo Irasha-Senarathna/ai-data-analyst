@@ -170,8 +170,10 @@ a single value), retry count, and a trace id.
 - **D6 — Provider abstraction.** `agent/llm.py` builds a LangChain chat model from `LLM_PROVIDER`, `LLM_MODEL_SQL` and `LLM_MODEL_ANSWER`. The default is Ollama.
 - **D7 — Langfuse is opt-in.** It's a Compose profile (`observability`) because Langfuse v3 (Postgres, ClickHouse, Redis, MinIO) plus a 7B model is tight on 16 GB RAM. Tracing only switches on when the Langfuse keys are set.
 - **D8 — Region = Brazilian macro-region.** Five values (Sudeste, Sul, Nordeste, Norte, Centro-Oeste), derived from state in `dim_geography`.
-- **D9 — uv for Python.** A single `uv.lock`; fast in Docker and CI.
+- **D9 — uv for Python.** One uv project (not a workspace) with a single `uv.lock`. It's fast in Docker and CI, and the Python packages (`agent`, `api`, `pipeline`, `semantic`, `evals`) import each other from the repo root.
 - **D10 — Deploy target.** Local Docker Compose plus a demo video. A Kubernetes/OpenChoreo option is documented in `docs/deploy.md` but not hosted.
+- **D11 — Native Ollama on Mac.** Docker can't use the Apple GPU, so Ollama in a container is CPU-only. Compose still includes an `ollama` service (for Linux and CI). On a Mac, run Ollama natively and set `OLLAMA_BASE_URL_DOCKER=http://host.docker.internal:11434` in `.env`.
+- **D12 — Next.js 16, standalone output.** The web image runs `node server.js` from `.next/standalone`. Tests use Vitest with React Testing Library, following the Next.js docs.
 
 ---
 

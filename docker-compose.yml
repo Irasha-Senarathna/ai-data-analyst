@@ -1,0 +1,162 @@
+name: ai-data-analyst
+
+# Core services: api, web, ollama.  `make up`
+# Tracing (Langfuse v3 + its stores) is opt-in:  `make up-observability`
+#
+# Mac tip: Docker cannot use the Apple GPU, so Ollama in a container is CPU-only.
+# For speed, run Ollama natively and set OLLAMA_BASE_URL_DOCKER=http://host.docker.internal:11434
+# in .env, then start only api + web.
+
+x-langfuse-env: &langfuse-env
+  DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:-change-me}@langfuse-db:5432/langfuse
+  SALT: ${LANGFUSE_SALT:-change-me}
+  ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+  TELEMETRY_ENABLED: "false"
+  CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+  CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+  CLICKHOUSE_USER: clickhouse
+  CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-change-me}
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  REDIS_HOST: langfuse-redis
+  REDIS_PORT: "6379"
+  REDIS_AUTH: ${LANGFUSE_REDIS_PASSWORD:-change-me}
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_PASSWORD:-change-me-minio}
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL_DOCKER:-http://ollama:11434}
+      WAREHOUSE_PATH: /app/data/warehouse.duckdb
+      APP_DB_PATH: /app/data/app.sqlite
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build: ./web
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:0.12.6
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Observability profile: Langfuse v3 -------------------------------------------------
+
+  langfuse-web:
+    profiles: [observability]
+    image: langfuse/langfuse:3
+    environment:
+      <<: *langfuse-env
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-change-me}
+    ports:
+      - "3001:3000"
+    depends_on: &langfuse-deps
+      langfuse-db:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_started
+
+  langfuse-worker:
+    profiles: [observability]
+    image: langfuse/langfuse-worker:3
+    environment:
+      <<: *langfuse-env
+    depends_on: *langfuse-deps
+
+  langfuse-db:
+    profiles: [observability]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-change-me}
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      retries: 10
+
+  langfuse-clickhouse:
+    profiles: [observability]
+    image: clickhouse/clickhouse-server:25.8
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-change-me}
+    volumes:
+      - langfuse-clickhouse:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      retries: 10
+
+  langfuse-redis:
+    profiles: [observability]
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${LANGFUSE_REDIS_PASSWORD:-change-me}"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${LANGFUSE_REDIS_PASSWORD:-change-me}", "ping"]
+      interval: 5s
+      retries: 10
+
+  langfuse-minio:
+    profiles: [observability]
+    image: cgr.dev/chainguard/minio:latest
+    entrypoint: ["sh", "-c", "mkdir -p /data/langfuse && minio server --address ':9000' /data"]
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_PASSWORD:-change-me-minio}
+    volumes:
+      - langfuse-minio:/data
+
+volumes:
+  ollama:
+  langfuse-db:
+  langfuse-clickhouse:
+  langfuse-minio:

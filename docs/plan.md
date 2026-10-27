@@ -14,12 +14,12 @@ For the design, see [architecture.md](architecture.md).
 ---
 
 ## M1 — Scaffold
-**Status:** TODO
+**Status:** DONE
 
 **Goal:** a monorepo skeleton where every service starts and has one passing smoke test.
 
 **Files**
-- `pyproject.toml`: uv workspace; ruff, mypy (strict), pytest
+- `pyproject.toml`: a single uv project (not a workspace); ruff, mypy (strict), pytest
 - `uv.lock`
 - `Makefile`: `up`, `pipeline`, `test`, `lint`, `eval`
 - `docker-compose.yml`: `api`, `web`, `ollama`; `langfuse` under the `observability` profile
@@ -29,11 +29,11 @@ For the design, see [architecture.md](architecture.md).
 - Empty package folders: `pipeline/`, `dbt/`, `semantic/`, `agent/`, `evals/`
 
 **Acceptance criteria**
-- [ ] `api/tests/test_health.py` passes: `/health` returns 200 `{"status": "ok"}`.
-- [ ] `web/__tests__/page.test.tsx` passes: the landing page renders its title.
-- [ ] `make lint` is clean.
-- [ ] `make up` starts api, web and ollama, and the healthchecks pass.
-- [ ] `make test` passes.
+- [x] `api/tests/test_health.py` passes: `/health` returns 200 `{"status": "ok"}`.
+- [x] `web/__tests__/page.test.tsx` passes: the landing page renders its title.
+- [x] `make lint` is clean.
+- [x] `make up` starts api, web and ollama, and the healthchecks pass.
+- [x] `make test` passes.
 
 ---
 
@@ -159,7 +159,7 @@ For the design, see [architecture.md](architecture.md).
   - fail 3 times, then a graceful message;
   - an empty result triggers a re-check;
   - negative revenue triggers a re-check.
-- [ ] A recorded run of "Why did revenue drop in Nov 2017 vs Oct 2017?" returns the top 3 drivers, each with its numbers.
+- [ ] A recorded run of "Why did revenue drop in Dec 2017 vs Nov 2017?" (November 2017 is the Black Friday peak) returns the top 3 drivers, each with its numbers.
 - [ ] `make test` passes.
 
 ---

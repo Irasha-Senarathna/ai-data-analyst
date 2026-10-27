@@ -17,7 +17,7 @@ env vars.
 
 | Dataset | Source | Size | Coverage | License | Used for |
 |---|---|---|---|---|---|
-| Olist Brazilian E-Commerce | Kaggle (`olistbr/brazilian-ecommerce`), needs a free Kaggle API token in `.env` | ~120 MB, 9 CSVs | ~100k orders, 2016-09 → 2018-10 | CC BY-NC-SA 4.0 | orders, items, payments, reviews, customers, sellers, products |
+| Olist Brazilian E-Commerce | Kaggle (`olistbr/brazilian-ecommerce`); public download works without a token, `KAGGLE_USERNAME`/`KAGGLE_KEY` are used if set | ~120 MB, 9 CSVs | ~100k orders, 2016-09 → 2018-10 | CC BY-NC-SA 4.0 | orders, items, payments, reviews, customers, sellers, products |
 | Open-Meteo Historical Weather | `archive-api.open-meteo.com`, no key | < 5 MB JSON | Daily, the 27 Brazilian state capitals, same date range | CC BY 4.0 | `temp_max`, `temp_min`, `precipitation_sum` per state per day |
 
 **How they join:** customer state + order date ↔ the capital of that state +
@@ -163,7 +163,7 @@ a single value), retry count, and a trace id.
 ## 6. Key decisions
 
 - **D1 — DuckDB, not Postgres.** It's a single file and zero ops, and it's fast for analytics at this size. Read-only access comes from connection flags plus the SQL guard instead of DB roles.
-- **D2 — Atomic warehouse swap.** The pipeline builds `warehouse.tmp.duckdb` and then renames it to `warehouse.duckdb`. This avoids file-lock conflicts with API readers. The pipeline is the only writer.
+- **D2 — Atomic warehouse swap.** The pipeline builds `data/.build/warehouse.duckdb` and then renames it over `data/warehouse.duckdb`. This avoids file-lock conflicts with API readers, and a failed build keeps the old warehouse. The pipeline is the only writer. Two details matter: the temp file keeps the *same file name*, because DuckDB names the catalog after the file stem and views store it; and dbt runs in a *subprocess*, because dbt-duckdb keeps its connection open in-process and the file must be closed (no WAL) before the swap.
 - **D3 — SQLite for app state.** Users, history, dashboards and LangGraph checkpoints live in a separate DB, so the warehouse can stay read-only.
 - **D4 — Synthetic fixture warehouse for tests.** A small generated dataset shaped like Olist. `make test` and CI never need Kaggle, and the licensed data is never redistributed.
 - **D5 — Recorded LLM responses in tests.** Unit tests are deterministic and need no Ollama. Real-model quality is measured by `make eval`.
@@ -174,6 +174,7 @@ a single value), retry count, and a trace id.
 - **D10 — Deploy target.** Local Docker Compose plus a demo video. A Kubernetes/OpenChoreo option is documented in `docs/deploy.md` but not hosted.
 - **D11 — Native Ollama on Mac.** Docker can't use the Apple GPU, so Ollama in a container is CPU-only. Compose still includes an `ollama` service (for Linux and CI). On a Mac, run Ollama natively and set `OLLAMA_BASE_URL_DOCKER=http://host.docker.internal:11434` in `.env`.
 - **D12 — Next.js 16, standalone output.** The web image runs `node server.js` from `.next/standalone`. Tests use Vitest with React Testing Library, following the Next.js docs.
+- **D13 — Raw = text, staging = types.** Every Olist CSV column is loaded as VARCHAR and cast in dbt staging (`cast` for required columns so bad data fails the build, `try_cast` for optional ones). This keeps zip prefixes' leading zeros and puts all typing rules in one reviewed place.
 
 ---
 

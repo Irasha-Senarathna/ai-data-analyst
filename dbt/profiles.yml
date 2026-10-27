@@ -1,0 +1,9 @@
+ai_data_analyst:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # The pipeline always sets DBT_DUCKDB_PATH (it builds into a temp file).
+      # The default is for running `dbt` by hand from this folder.
+      path: "{{ env_var('DBT_DUCKDB_PATH', '../data/warehouse.duckdb') }}"
+      threads: 4

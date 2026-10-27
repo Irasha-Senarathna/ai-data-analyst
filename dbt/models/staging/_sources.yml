@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: olist
+    description: >
+      Olist Brazilian E-Commerce public dataset (Kaggle, CC BY-NC-SA 4.0), loaded by the
+      Dagster pipeline with every column as text. Orders from 2016-09 to 2018-10.
+    schema: raw
+    tables:
+      - name: olist_orders
+      - name: olist_order_items
+      - name: olist_order_payments
+      - name: olist_order_reviews
+      - name: olist_customers
+      - name: olist_sellers
+      - name: olist_products
+      - name: olist_category_translation
+      - name: olist_geolocation
+
+  - name: open_meteo
+    description: >
+      Daily historical weather from the Open-Meteo archive API (CC BY 4.0), one series per
+      Brazilian state capital, 2016-09-01 to 2018-10-31, each in the capital's local time zone.
+    schema: raw
+    tables:
+      - name: open_meteo_weather_daily

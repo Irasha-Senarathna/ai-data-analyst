@@ -1,0 +1,26 @@
+version: 2
+
+seeds:
+  - name: brazil_states
+    description: >
+      One row per Brazilian state (27 UFs) with its macro-region and capital. The capital's
+      coordinates are where weather is measured. The region drives row-level security.
+    columns:
+      - name: state
+        description: Two-letter state code (UF).
+        data_tests: [unique, not_null]
+      - name: state_name
+        description: Full state name.
+      - name: region
+        description: Brazilian macro-region.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [Norte, Nordeste, Centro-Oeste, Sudeste, Sul]
+      - name: capital
+        description: State capital city.
+      - name: latitude
+        description: Capital latitude.
+      - name: longitude
+        description: Capital longitude.

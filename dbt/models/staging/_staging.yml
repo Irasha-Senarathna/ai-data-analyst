@@ -1,0 +1,283 @@
+version: 2
+
+models:
+  - name: stg_olist__orders
+    description: One row per order, with typed timestamps. Cleaned from raw.olist_orders.
+    columns:
+      - name: order_id
+        description: Unique order identifier.
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: Customer key for this order (one per order; see customer_unique_id for the person).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_olist__customers')
+                field: customer_id
+      - name: order_status
+        description: Lifecycle status of the order, lower case.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [delivered, shipped, canceled, unavailable, invoiced, processing, created, approved]
+      - name: purchased_at
+        description: When the customer placed the order (local time).
+        data_tests: [not_null]
+      - name: approved_at
+        description: When the payment was approved. Null if never approved.
+      - name: delivered_to_carrier_at
+        description: When the seller handed the order to the carrier. Null if not shipped.
+      - name: delivered_to_customer_at
+        description: When the customer received the order. Null if not delivered.
+      - name: estimated_delivery_date
+        description: Delivery date promised to the customer at purchase time.
+        data_tests: [not_null]
+
+  - name: stg_olist__order_items
+    description: One row per item in an order. Cleaned from raw.olist_order_items.
+    columns:
+      - name: order_item_key
+        description: Surrogate key, order_id plus item number.
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: Order this item belongs to.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_olist__orders')
+                field: order_id
+      - name: order_item_number
+        description: Position of the item within the order, starting at 1.
+        data_tests: [not_null]
+      - name: product_id
+        description: Product sold.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_olist__products')
+                field: product_id
+      - name: seller_id
+        description: Seller who fulfilled the item.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_olist__sellers')
+                field: seller_id
+      - name: shipping_limit_at
+        description: Deadline for the seller to hand the item to the carrier.
+      - name: price
+        description: Item price in BRL, excluding freight.
+        data_tests: [not_null]
+      - name: freight_value
+        description: Freight charged for this item in BRL.
+        data_tests: [not_null]
+
+  - name: stg_olist__order_payments
+    description: One row per payment on an order (an order can be split across payments).
+    columns:
+      - name: payment_key
+        description: Surrogate key, order_id plus payment sequence.
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: Order that was paid.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_olist__orders')
+                field: order_id
+      - name: payment_sequence
+        description: Order of this payment within the order, starting at 1.
+        data_tests: [not_null]
+      - name: payment_type
+        description: Payment method.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [credit_card, boleto, voucher, debit_card, not_defined]
+      - name: installments
+        description: Number of installments chosen by the customer. Null where the source says 0.
+      - name: payment_value
+        description: Amount paid in BRL. Can be 0 for some vouchers and not_defined payments.
+        data_tests: [not_null]
+
+  - name: stg_olist__order_reviews
+    description: One row per review and order pair. review_id alone is not unique in the source.
+    columns:
+      - name: review_key
+        description: Surrogate key, review_id plus order_id.
+        data_tests: [unique, not_null]
+      - name: review_id
+        description: Review identifier (can repeat across orders).
+        data_tests: [not_null]
+      - name: order_id
+        description: Order being reviewed.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_olist__orders')
+                field: order_id
+      - name: review_score
+        description: Customer satisfaction score from 1 (worst) to 5 (best).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+      - name: comment_title
+        description: Optional review title in Portuguese. Untrusted free text.
+      - name: comment_message
+        description: Optional review text in Portuguese. Untrusted free text.
+      - name: created_date
+        description: Day the review survey was sent to the customer.
+      - name: answered_at
+        description: When the customer answered the survey.
+
+  - name: stg_olist__customers
+    description: >
+      One row per customer_id. Olist creates a new customer_id for every order, so the same
+      person (customer_unique_id) can appear several times.
+    columns:
+      - name: customer_id
+        description: Per-order customer key.
+        data_tests: [unique, not_null]
+      - name: customer_unique_id
+        description: Identifies the actual person across orders.
+        data_tests: [not_null]
+      - name: zip_code_prefix
+        description: First five digits of the customer's zip code, as text.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_olist__geolocation')
+                field: zip_code_prefix
+              config:
+                severity: warn  # ~160 prefixes are missing from the geolocation source
+      - name: city
+        description: Customer city, lower case, accents removed.
+      - name: state
+        description: Two-letter Brazilian state code (UF).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('brazil_states')
+                field: state
+
+  - name: stg_olist__sellers
+    description: One row per seller.
+    columns:
+      - name: seller_id
+        description: Unique seller identifier.
+        data_tests: [unique, not_null]
+      - name: zip_code_prefix
+        description: First five digits of the seller's zip code, as text.
+      - name: city
+        description: Seller city, lower case, accents removed.
+      - name: state
+        description: Two-letter Brazilian state code (UF).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('brazil_states')
+                field: state
+
+  - name: stg_olist__products
+    description: One row per product. Column names fixed from the source's "lenght" typo.
+    columns:
+      - name: product_id
+        description: Unique product identifier.
+        data_tests: [unique, not_null]
+      - name: category_name
+        description: Product category in Portuguese. Null for about 2% of products.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_olist__category_translation')
+                field: category_name
+              config:
+                severity: warn  # pc_gamer and one kitchen category have no translation
+      - name: name_length
+        description: Number of characters in the product name.
+      - name: description_length
+        description: Number of characters in the product description.
+      - name: photos_count
+        description: Number of product photos published.
+      - name: weight_g
+        description: Product weight in grams.
+      - name: length_cm
+        description: Package length in centimetres.
+      - name: height_cm
+        description: Package height in centimetres.
+      - name: width_cm
+        description: Package width in centimetres.
+
+  - name: stg_olist__category_translation
+    description: One row per product category, Portuguese to English.
+    columns:
+      - name: category_name
+        description: Category name in Portuguese, as used in products.
+        data_tests: [unique, not_null]
+      - name: category_name_english
+        description: Category name in English.
+        data_tests: [not_null]
+
+  - name: stg_olist__geolocation
+    description: >
+      One row per zip code prefix. Coordinates are the median of the source's duplicate rows,
+      using only points inside Brazil and in the prefix's most common state.
+    columns:
+      - name: zip_code_prefix
+        description: First five digits of a Brazilian zip code, as text.
+        data_tests: [unique, not_null]
+      - name: latitude
+        description: Median latitude of the prefix's points in its main state. Null when suspect.
+      - name: longitude
+        description: Median longitude of the prefix's points in its main state. Null when suspect.
+      - name: city
+        description: Most common city name for the prefix, lower case, accents removed.
+      - name: is_location_suspect
+        description: True when the points lie far from the labelled state, so coordinates were nulled.
+        data_tests: [not_null]
+      - name: state
+        description: Most common state code for the prefix.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('brazil_states')
+                field: state
+
+  - name: stg_open_meteo__weather_daily
+    description: One row per Brazilian state and day, measured at the state capital.
+    columns:
+      - name: weather_key
+        description: Surrogate key, state plus date.
+        data_tests: [unique, not_null]
+      - name: state
+        description: Two-letter Brazilian state code (UF).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('brazil_states')
+                field: state
+      - name: weather_date
+        description: Calendar day in the capital's own local time zone.
+        data_tests: [not_null]
+      - name: temp_max_c
+        description: Daily maximum air temperature at 2 m, in °C.
+      - name: temp_min_c
+        description: Daily minimum air temperature at 2 m, in °C.
+      - name: precipitation_mm
+        description: Total daily precipitation in millimetres.
+        data_tests: [not_null]

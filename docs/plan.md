@@ -38,26 +38,29 @@ For the design, see [architecture.md](architecture.md).
 ---
 
 ## M2 — Data pipeline (ingestion + staging)
-**Status:** TODO
+**Status:** DONE
 
 **Goal:** Dagster downloads Olist and Open-Meteo data idempotently into `raw.*` in DuckDB, and dbt builds the staging models.
 
 **Files**
-- `pipeline/definitions.py`
-- `pipeline/assets/olist.py`: Kaggle download, then load the 9 CSVs
-- `pipeline/assets/weather.py`: Open-Meteo for the 27 capitals
-- `pipeline/warehouse.py`: atomic tmp → final swap
-- `dbt/dbt_project.yml`, `dbt/profiles.yml`
-- `dbt/models/staging/stg_*.sql` and `_staging.yml`, built with `/new-dbt-model`
-- `tests/fixtures/make_fixture_warehouse.py`: synthetic data shaped like Olist
-- `make pipeline`
+- `pipeline/definitions.py`: Dagster assets `olist_files`, `weather_files`, `warehouse`
+- `pipeline/download.py`: idempotent download with a `.sha256` sidecar
+- `pipeline/olist.py`: Kaggle download (token optional), safe extraction of the 9 CSVs
+- `pipeline/weather.py`: Open-Meteo for the 27 capitals listed in `dbt/seeds/brazil_states.csv`
+- `pipeline/load.py`: raw tables, every Olist column as text
+- `pipeline/build.py`, `pipeline/warehouse.py`, `pipeline/dbt.py`: load, then `dbt build` in a subprocess, then atomic swap
+- `dbt/dbt_project.yml`, `dbt/profiles.yml`, `dbt/macros/generate_schema_name.sql`
+- `dbt/models/staging/stg_olist__*.sql`, `stg_open_meteo__weather_daily.sql`, `_staging.yml`, `_sources.yml`
+- `dbt/seeds/brazil_states.csv`: state → region → capital (also used for RLS later)
+- `tests/fixtures/synthetic.py`: synthetic data shaped like Olist, quirks included
+- `make pipeline`, `make dagster`
 
 **Acceptance criteria**
-- [ ] A test with mocked HTTP shows the second run skips the download (file exists and checksum matches).
-- [ ] Each asset records a row count greater than 0 as metadata.
-- [ ] `dbt build --select staging` passes, with `unique`/`not_null` on every primary key.
-- [ ] The fixture warehouse builds in under 10 s.
-- [ ] `make test` passes.
+- [x] A test with mocked HTTP shows the second run skips the download (file exists and checksum matches).
+- [x] Each asset records a row count greater than 0 as metadata.
+- [x] `dbt build` passes on staging, with `unique`/`not_null` on every primary key (67 nodes on real data).
+- [x] The fixture warehouse builds in under 10 s.
+- [x] `make test` passes.
 
 ---
 
@@ -65,6 +68,15 @@ For the design, see [architecture.md](architecture.md).
 **Status:** TODO
 
 **Goal:** business-ready `fct_*`/`dim_*` tables with full docs and tests.
+
+**Rules from the M2 SQL review (verified on the real data)**
+- Reviews: 547 orders have more than one review. Keep one review per order (latest answer) wherever reviews join to orders.
+- Revenue: for 1,076 orders, items plus freight ≠ the amount paid. Order value comes from `order_items`, paid amount from `payments`. Never mix them, and always left-join from orders (775 orders have no items, 1 has no payment).
+- Customers: `dim_customers` is one row per person (`customer_unique_id`), with the state of their latest order (39 people appear in more than one state).
+- Locations: 279 customers and 7 sellers have no coordinates, so geography joins must be left joins.
+- Delivery: 166 orders were handed to the carrier before purchase, and 23 were delivered before shipping. Delivery-time metrics exclude negative durations, and a warn-level test reports them.
+- Categories: `coalesce(english, portuguese, 'unknown')`.
+- No free-text review comments in marts (prompt-injection surface); only `has_comment`.
 
 **Files**
 - `dbt/models/intermediate/int_*.sql`

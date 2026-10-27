@@ -1,0 +1,33 @@
+name: ai_data_analyst
+version: "1.0.0"
+profile: ai_data_analyst
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: target
+clean-targets: [target, logs]
+
+flags:
+  send_anonymous_usage_stats: false
+
+models:
+  ai_data_analyst:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table
+
+seeds:
+  ai_data_analyst:
+    +schema: reference
+    brazil_states:
+      +column_types:
+        latitude: double
+        longitude: double

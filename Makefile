@@ -3,7 +3,7 @@ COMPOSE ?= $(shell docker compose version >/dev/null 2>&1 && echo "docker compos
 LLM_MODEL ?= qwen2.5-coder:7b
 
 .DEFAULT_GOAL := help
-.PHONY: help install up up-observability down logs model pipeline test test-py test-web lint eval
+.PHONY: help install up up-observability down logs model pipeline dagster test test-py test-web lint eval
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -27,8 +27,11 @@ logs: ## Follow service logs
 model: ## Pull the default LLM into the ollama container
 	$(COMPOSE) exec ollama ollama pull $(LLM_MODEL)
 
-pipeline: ## Run ingestion + dbt build
-	@echo "make pipeline is implemented in milestone 2" && exit 1
+pipeline: ## Download data, load raw tables, run dbt build (idempotent)
+	uv run python -m pipeline
+
+dagster: ## Open the Dagster UI at http://localhost:3002
+	DAGSTER_HOME=$(CURDIR)/data/dagster uv run dagster dev -m pipeline.definitions -p 3002
 
 test: test-py test-web ## Run all unit tests
 
